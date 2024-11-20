@@ -88,6 +88,9 @@ type TracesConfig struct {
 	// BackOffMaxElapsedTime is the maximum amount of time (including retries) spent trying to send a request/batch.
 	BackOffMaxElapsedTime time.Duration `yaml:"backoff_max_elapsed_time" env:"BEYLA_BACKOFF_MAX_ELAPSED_TIME"`
 
+	// ReportExceptionEvents enables the reporting of exception events.
+	ReportExceptionEvents bool `yaml:"report_exception_events" env:"BEYLA_TRACES_REPORT_EXCEPTION_EVENTS"`
+
 	ReportersCacheLen int `yaml:"reporters_cache_len" env:"BEYLA_TRACES_REPORT_CACHE_LEN"`
 
 	// SDKLogLevel works independently from the global LogLevel because it prints GBs of logs in Debug mode
@@ -198,7 +201,7 @@ func (tr *tracesOTELReceiver) processSpans(exp exporter.Traces, spans []request.
 		}
 
 		envResourceAttrs := ResourceAttrsFromEnv(&span.ServiceID)
-		traces := GenerateTracesWithAttributes(span, tr.ctxInfo.HostID, finalAttrs, envResourceAttrs)
+		traces := GenerateTracesWithAttributes(tr.cfg, span, tr.ctxInfo.HostID, finalAttrs, envResourceAttrs)
 		err := exp.ConsumeTraces(tr.ctx, traces)
 		if err != nil {
 			slog.Error("error sending trace to consumer", "error", err)
@@ -424,7 +427,7 @@ func traceAppResourceAttrs(hostID string, service *svc.ID) []attribute.KeyValue 
 	return attrs
 }
 
-func GenerateTracesWithAttributes(span *request.Span, hostID string, attrs []attribute.KeyValue, envResourceAttrs []attribute.KeyValue) ptrace.Traces {
+func GenerateTracesWithAttributes(cfg TracesConfig, span *request.Span, hostID string, attrs []attribute.KeyValue, envResourceAttrs []attribute.KeyValue) ptrace.Traces {
 	t := span.Timings()
 	start := spanStartTime(t)
 	hasSubSpans := t.Start.After(start)
@@ -466,6 +469,15 @@ func GenerateTracesWithAttributes(span *request.Span, hostID string, attrs []att
 	m := attrsToMap(attrs)
 	m.CopyTo(s.Attributes())
 
+	// Set error message and stacktrace
+	if cfg.ReportExceptionEvents && span.ErrorMessage != "" {
+		e := s.Events().AppendEmpty()
+		e.SetName(semconv.ExceptionEventName)
+		e.Attributes().PutStr(string(semconv.ExceptionMessageKey), span.ErrorMessage)
+		e.Attributes().PutStr(string(semconv.ExceptionTypeKey), "error")
+		e.Attributes().PutStr(string(semconv.ExceptionStacktraceKey), span.ErrorStacktrace)
+	}
+
 	// Set status code
 	statusCode := codeToStatusCode(request.SpanStatusCode(span))
 	s.Status().SetCode(statusCode)
@@ -474,8 +486,8 @@ func GenerateTracesWithAttributes(span *request.Span, hostID string, attrs []att
 }
 
 // GenerateTraces creates a ptrace.Traces from a request.Span
-func GenerateTraces(span *request.Span, hostID string, userAttrs map[attr.Name]struct{}, envResourceAttrs []attribute.KeyValue) ptrace.Traces {
-	return GenerateTracesWithAttributes(span, hostID, traceAttributes(span, userAttrs), envResourceAttrs)
+func GenerateTraces(cfg TracesConfig, span *request.Span, hostID string, userAttrs map[attr.Name]struct{}, envResourceAttrs []attribute.KeyValue) ptrace.Traces {
+	return GenerateTracesWithAttributes(cfg, span, hostID, traceAttributes(span, userAttrs), envResourceAttrs)
 }
 
 // createSubSpans creates the internal spans for a request.Span

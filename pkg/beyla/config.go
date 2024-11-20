@@ -75,11 +75,12 @@ var DefaultConfig = Config{
 		TTL: defaultMetricsTTL,
 	},
 	Traces: otel.TracesConfig{
-		Protocol:           otel.ProtocolUnset,
-		TracesProtocol:     otel.ProtocolUnset,
-		MaxQueueSize:       4096,
-		MaxExportBatchSize: 4096,
-		ReportersCacheLen:  ReporterLRUSize,
+		Protocol:              otel.ProtocolUnset,
+		TracesProtocol:        otel.ProtocolUnset,
+		MaxQueueSize:          4096,
+		MaxExportBatchSize:    4096,
+		ReportersCacheLen:     ReporterLRUSize,
+		ReportExceptionEvents: false,
 		Instrumentations: []string{
 			instrumentations.InstrumentationALL,
 		},

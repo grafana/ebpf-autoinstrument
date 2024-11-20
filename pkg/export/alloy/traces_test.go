@@ -59,7 +59,7 @@ func TestTracesSkipsInstrumented(t *testing.T) {
 func makeTracesTestReceiver() *tracesReceiver {
 	return &tracesReceiver{
 		ctx:        context.Background(),
-		cfg:        &beyla.TracesReceiverConfig{},
+		cfg:        &beyla.Config{},
 		attributes: attributes.Selection{},
 		hostID:     "Alloy",
 	}
@@ -69,12 +69,13 @@ func generateTracesForSpans(t *testing.T, tr *tracesReceiver, spans []request.Sp
 	res := []ptrace.Traces{}
 	traceAttrs, err := otel.GetUserSelectedAttributes(tr.attributes)
 	assert.NoError(t, err)
+	cfg := otel.TracesConfig{}
 	for i := range spans {
 		span := &spans[i]
 		if tr.spanDiscarded(span) {
 			continue
 		}
-		res = append(res, otel.GenerateTraces(span, tr.hostID, traceAttrs, []attribute.KeyValue{}))
+		res = append(res, otel.GenerateTraces(cfg, span, tr.hostID, traceAttrs, []attribute.KeyValue{}))
 	}
 
 	return res

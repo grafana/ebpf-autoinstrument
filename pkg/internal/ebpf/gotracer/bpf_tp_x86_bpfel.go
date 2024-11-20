@@ -24,6 +24,16 @@ type bpf_tpEgressKeyT struct {
 	D_port uint16
 }
 
+type bpf_tpErrorEvent struct {
+	Pid      uint32
+	CpuId    uint32
+	Comm     [16]int8
+	UstackSz int32
+	_        [4]byte
+	Ustack   [32]uint64
+	ErrMsg   [128]uint8
+}
+
 type bpf_tpFramerFuncInvocationT struct {
 	FramerPtr uint64
 	Tp        bpf_tpTpInfoT
@@ -236,6 +246,8 @@ type bpf_tpProgramSpecs struct {
 	UprobeClientRoundTrip                     *ebpf.ProgramSpec `ebpf:"uprobe_client_roundTrip"`
 	UprobeConnServe                           *ebpf.ProgramSpec `ebpf:"uprobe_connServe"`
 	UprobeConnServeRet                        *ebpf.ProgramSpec `ebpf:"uprobe_connServeRet"`
+	UprobeError                               *ebpf.ProgramSpec `ebpf:"uprobe_error"`
+	UprobeErrorReturn                         *ebpf.ProgramSpec `ebpf:"uprobe_errorReturn"`
 	UprobeExecDC                              *ebpf.ProgramSpec `ebpf:"uprobe_execDC"`
 	UprobeGrpcFramerWriteHeaders              *ebpf.ProgramSpec `ebpf:"uprobe_grpcFramerWriteHeaders"`
 	UprobeGrpcFramerWriteHeadersReturns       *ebpf.ProgramSpec `ebpf:"uprobe_grpcFramerWriteHeaders_returns"`
@@ -293,6 +305,7 @@ type bpf_tpMapSpecs struct {
 	Http2ReqMap                   *ebpf.MapSpec `ebpf:"http2_req_map"`
 	IncomingTraceMap              *ebpf.MapSpec `ebpf:"incoming_trace_map"`
 	KafkaRequests                 *ebpf.MapSpec `ebpf:"kafka_requests"`
+	LastError                     *ebpf.MapSpec `ebpf:"last_error"`
 	Newproc1                      *ebpf.MapSpec `ebpf:"newproc1"`
 	OngoingClientConnections      *ebpf.MapSpec `ebpf:"ongoing_client_connections"`
 	OngoingGoHttp                 *ebpf.MapSpec `ebpf:"ongoing_go_http"`
@@ -350,6 +363,7 @@ type bpf_tpMaps struct {
 	Http2ReqMap                   *ebpf.Map `ebpf:"http2_req_map"`
 	IncomingTraceMap              *ebpf.Map `ebpf:"incoming_trace_map"`
 	KafkaRequests                 *ebpf.Map `ebpf:"kafka_requests"`
+	LastError                     *ebpf.Map `ebpf:"last_error"`
 	Newproc1                      *ebpf.Map `ebpf:"newproc1"`
 	OngoingClientConnections      *ebpf.Map `ebpf:"ongoing_client_connections"`
 	OngoingGoHttp                 *ebpf.Map `ebpf:"ongoing_go_http"`
@@ -390,6 +404,7 @@ func (m *bpf_tpMaps) Close() error {
 		m.Http2ReqMap,
 		m.IncomingTraceMap,
 		m.KafkaRequests,
+		m.LastError,
 		m.Newproc1,
 		m.OngoingClientConnections,
 		m.OngoingGoHttp,
@@ -433,6 +448,8 @@ type bpf_tpPrograms struct {
 	UprobeClientRoundTrip                     *ebpf.Program `ebpf:"uprobe_client_roundTrip"`
 	UprobeConnServe                           *ebpf.Program `ebpf:"uprobe_connServe"`
 	UprobeConnServeRet                        *ebpf.Program `ebpf:"uprobe_connServeRet"`
+	UprobeError                               *ebpf.Program `ebpf:"uprobe_error"`
+	UprobeErrorReturn                         *ebpf.Program `ebpf:"uprobe_errorReturn"`
 	UprobeExecDC                              *ebpf.Program `ebpf:"uprobe_execDC"`
 	UprobeGrpcFramerWriteHeaders              *ebpf.Program `ebpf:"uprobe_grpcFramerWriteHeaders"`
 	UprobeGrpcFramerWriteHeadersReturns       *ebpf.Program `ebpf:"uprobe_grpcFramerWriteHeaders_returns"`
@@ -488,6 +505,8 @@ func (p *bpf_tpPrograms) Close() error {
 		p.UprobeClientRoundTrip,
 		p.UprobeConnServe,
 		p.UprobeConnServeRet,
+		p.UprobeError,
+		p.UprobeErrorReturn,
 		p.UprobeExecDC,
 		p.UprobeGrpcFramerWriteHeaders,
 		p.UprobeGrpcFramerWriteHeadersReturns,

@@ -124,30 +124,32 @@ type PidInfo struct {
 // REMINDER: any attribute here must be also added to the functions SpanOTELGetters,
 // SpanPromGetters and getDefinitions in pkg/export/attributes/attr_defs.go
 type Span struct {
-	Type           EventType      `json:"type"`
-	IgnoreSpan     ignoreMode     `json:"ignoreSpan"`
-	Method         string         `json:"-"`
-	Path           string         `json:"-"`
-	Route          string         `json:"-"`
-	Peer           string         `json:"peer"`
-	PeerPort       int            `json:"peerPort,string"`
-	Host           string         `json:"host"`
-	HostPort       int            `json:"hostPort,string"`
-	Status         int            `json:"-"`
-	ContentLength  int64          `json:"-"`
-	RequestStart   int64          `json:"-"`
-	Start          int64          `json:"-"`
-	End            int64          `json:"-"`
-	ServiceID      svc.ID         `json:"-"` // TODO: rename to Service or ResourceAttrs
-	TraceID        trace2.TraceID `json:"traceID"`
-	SpanID         trace2.SpanID  `json:"spanID"`
-	ParentSpanID   trace2.SpanID  `json:"parentSpanID"`
-	Flags          uint8          `json:"flags,string"`
-	Pid            PidInfo        `json:"-"`
-	PeerName       string         `json:"peerName"`
-	HostName       string         `json:"hostName"`
-	OtherNamespace string         `json:"-"`
-	Statement      string         `json:"-"`
+	Type            EventType      `json:"type"`
+	IgnoreSpan      ignoreMode     `json:"ignoreSpan"`
+	Method          string         `json:"-"`
+	Path            string         `json:"-"`
+	Route           string         `json:"-"`
+	Peer            string         `json:"peer"`
+	PeerPort        int            `json:"peerPort,string"`
+	Host            string         `json:"host"`
+	HostPort        int            `json:"hostPort,string"`
+	Status          int            `json:"-"`
+	ContentLength   int64          `json:"-"`
+	RequestStart    int64          `json:"-"`
+	Start           int64          `json:"-"`
+	End             int64          `json:"-"`
+	ServiceID       svc.ID         `json:"-"` // TODO: rename to Service or ResourceAttrs
+	TraceID         trace2.TraceID `json:"traceID"`
+	SpanID          trace2.SpanID  `json:"spanID"`
+	ParentSpanID    trace2.SpanID  `json:"parentSpanID"`
+	Flags           uint8          `json:"flags,string"`
+	Pid             PidInfo        `json:"-"`
+	PeerName        string         `json:"peerName"`
+	HostName        string         `json:"hostName"`
+	OtherNamespace  string         `json:"-"`
+	Statement       string         `json:"-"`
+	ErrorMessage    string         `json:"-"`
+	ErrorStacktrace string         `json:"-"`
 }
 
 func (s *Span) Inside(parent *Span) bool {

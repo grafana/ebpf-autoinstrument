@@ -2,6 +2,7 @@ package ebpf
 
 import (
 	"context"
+	"debug/gosym"
 	"io"
 	"log/slog"
 
@@ -33,7 +34,7 @@ type PIDsAccounter interface {
 	// traces from processes whose PID has not been allowed before
 	// We must use a pointer for svc.ID so that all child processes share the same
 	// object. This is important when we tag a service as exporting traces or metrics.
-	AllowPID(uint32, uint32, *svc.ID)
+	AllowPID(uint32, uint32, *svc.ID, *gosym.Table)
 	// BlockPID notifies the tracer to stop accepting traces from the process
 	// with the provided PID. After receiving them via ringbuffer, it should
 	// discard them.
@@ -117,9 +118,9 @@ type ProcessTracer struct {
 	Instrumentables map[uint64]*instrumenter
 }
 
-func (pt *ProcessTracer) AllowPID(pid, ns uint32, svc *svc.ID) {
+func (pt *ProcessTracer) AllowPID(pid, ns uint32, svc *svc.ID, symTab *gosym.Table) {
 	for i := range pt.Programs {
-		pt.Programs[i].AllowPID(pid, ns, svc)
+		pt.Programs[i].AllowPID(pid, ns, svc, symTab)
 	}
 }
 

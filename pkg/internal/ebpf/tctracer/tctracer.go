@@ -4,6 +4,7 @@ package tctracer
 
 import (
 	"context"
+	"debug/gosym"
 	"io"
 	"log/slog"
 
@@ -43,7 +44,7 @@ func New(cfg *beyla.Config) *Tracer {
 	}
 }
 
-func (p *Tracer) AllowPID(uint32, uint32, *svc.ID) {}
+func (p *Tracer) AllowPID(uint32, uint32, *svc.ID, *gosym.Table) {}
 
 func (p *Tracer) BlockPID(uint32, uint32) {}
 

@@ -16,6 +16,7 @@ package gotracer
 
 import (
 	"context"
+	"debug/gosym"
 	"io"
 	"log/slog"
 	"unsafe"
@@ -38,26 +39,28 @@ import (
 //go:generate $BPF2GO -cc $BPF_CLANG -cflags $BPF_CFLAGS -target amd64,arm64 bpf_tp_debug ../../../../bpf/go_tracer.c -- -I../../../../bpf/headers -DBPF_DEBUG
 
 type Tracer struct {
-	log        *slog.Logger
-	pidsFilter ebpfcommon.ServiceFilter
-	cfg        *config.EPPFTracer
-	metrics    imetrics.Reporter
-	bpfObjects bpfObjects
-	closers    []io.Closer
+	log          *slog.Logger
+	pidsFilter   ebpfcommon.ServiceFilter
+	cfg          *config.EPPFTracer
+	reportErrors bool
+	metrics      imetrics.Reporter
+	bpfObjects   bpfObjects
+	closers      []io.Closer
 }
 
 func New(cfg *beyla.Config, metrics imetrics.Reporter) *Tracer {
 	log := slog.With("component", "go.Tracer")
 	return &Tracer{
-		log:        log,
-		pidsFilter: ebpfcommon.CommonPIDsFilter(&cfg.Discovery),
-		cfg:        &cfg.EBPF,
-		metrics:    metrics,
+		log:          log,
+		pidsFilter:   ebpfcommon.CommonPIDsFilter(&cfg.Discovery),
+		cfg:          &cfg.EBPF,
+		reportErrors: cfg.Traces.ReportExceptionEvents,
+		metrics:      metrics,
 	}
 }
 
-func (p *Tracer) AllowPID(pid, ns uint32, svc *svc.ID) {
-	p.pidsFilter.AllowPID(pid, ns, svc, ebpfcommon.PIDTypeGo)
+func (p *Tracer) AllowPID(pid, ns uint32, svc *svc.ID, symTab *gosym.Table) {
+	p.pidsFilter.AllowPID(pid, ns, svc, ebpfcommon.PIDTypeGo, symTab)
 }
 
 func (p *Tracer) BlockPID(pid, ns uint32) {
@@ -356,6 +359,15 @@ func (p *Tracer) GoProbes() map[string][]ebpfcommon.FunctionPrograms {
 		m["net/http.(*http2Framer).WriteHeaders"] = []ebpfcommon.FunctionPrograms{{ // http2 context propagation
 			Start: p.bpfObjects.UprobeHttp2FramerWriteHeaders,
 			End:   p.bpfObjects.UprobeHttp2FramerWriteHeadersReturns,
+		}}
+	}
+
+	if p.reportErrors {
+		m["fmt.Errorf"] = []ebpfcommon.FunctionPrograms{{
+			Start: p.bpfObjects.UprobeError,
+		}}
+		m["errors.(*errorString).Error"] = []ebpfcommon.FunctionPrograms{{
+			End: p.bpfObjects.UprobeErrorReturn,
 		}}
 	}
 

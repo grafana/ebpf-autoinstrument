@@ -1,6 +1,7 @@
 package ebpfcommon
 
 import (
+	"debug/gosym"
 	"log/slog"
 	"sync"
 
@@ -32,11 +33,12 @@ type PIDInfo struct {
 }
 
 type ServiceFilter interface {
-	AllowPID(uint32, uint32, *svc.ID, PIDType)
+	AllowPID(uint32, uint32, *svc.ID, PIDType, *gosym.Table)
 	BlockPID(uint32, uint32)
 	ValidPID(uint32, uint32, PIDType) bool
 	Filter(inputSpans []request.Span) []request.Span
 	CurrentPIDs(PIDType) map[uint32]map[uint32]svc.ID
+	GetSymTab(uint32) *gosym.Table
 }
 
 // PIDsFilter keeps a thread-safe copy of the PIDs whose traces are allowed to
@@ -47,6 +49,7 @@ type PIDsFilter struct {
 	current    map[uint32]map[uint32]PIDInfo
 	mux        *sync.RWMutex
 	detectOtel bool
+	symTabs    map[uint32]*gosym.Table
 }
 
 var commonPIDsFilter *PIDsFilter
@@ -58,6 +61,7 @@ func newPIDsFilter(c *services.DiscoveryConfig, log *slog.Logger) *PIDsFilter {
 		current:    map[uint32]map[uint32]PIDInfo{},
 		mux:        &sync.RWMutex{},
 		detectOtel: c.ExcludeOTelInstrumentedServices,
+		symTabs:    make(map[uint32]*gosym.Table),
 	}
 }
 
@@ -78,16 +82,17 @@ func CommonPIDsFilter(c *services.DiscoveryConfig) ServiceFilter {
 	return commonPIDsFilter
 }
 
-func (pf *PIDsFilter) AllowPID(pid, ns uint32, svc *svc.ID, pidType PIDType) {
+func (pf *PIDsFilter) AllowPID(pid, ns uint32, svc *svc.ID, pidType PIDType, symTab *gosym.Table) {
 	pf.mux.Lock()
 	defer pf.mux.Unlock()
-	pf.addPID(pid, ns, svc, pidType)
+	pf.addPID(pid, ns, svc, pidType, symTab)
 }
 
 func (pf *PIDsFilter) BlockPID(pid, ns uint32) {
 	pf.mux.Lock()
 	defer pf.mux.Unlock()
 	pf.removePID(pid, ns)
+
 }
 
 func (pf *PIDsFilter) ValidPID(userPID, ns uint32, pidType PIDType) bool {
@@ -158,11 +163,22 @@ func (pf *PIDsFilter) Filter(inputSpans []request.Span) []request.Span {
 	return outputSpans
 }
 
-func (pf *PIDsFilter) addPID(pid, nsid uint32, s *svc.ID, t PIDType) {
+func (pf *PIDsFilter) GetSymTab(pid uint32) *gosym.Table {
+	pf.mux.RLock()
+	defer pf.mux.RUnlock()
+	return pf.symTabs[pid]
+}
+
+func (pf *PIDsFilter) addPID(pid, nsid uint32, s *svc.ID, t PIDType, symTab *gosym.Table) {
 	ns, nsExists := pf.current[nsid]
 	if !nsExists {
 		ns = make(map[uint32]PIDInfo)
 		pf.current[nsid] = ns
+	}
+
+	_, stExists := pf.symTabs[pid]
+	if !stExists {
+		pf.symTabs[pid] = symTab
 	}
 
 	allPids, err := readNamespacePIDs(int32(pid))
@@ -187,6 +203,7 @@ func (pf *PIDsFilter) removePID(pid, nsid uint32) {
 	if len(ns) == 0 {
 		delete(pf.current, nsid)
 	}
+	delete(pf.symTabs, pid)
 }
 
 // IdentityPidsFilter is a PIDsFilter that does not filter anything. It is feasible
@@ -195,7 +212,7 @@ type IdentityPidsFilter struct {
 	detectOTel bool
 }
 
-func (pf *IdentityPidsFilter) AllowPID(_ uint32, _ uint32, _ *svc.ID, _ PIDType) {}
+func (pf *IdentityPidsFilter) AllowPID(_ uint32, _ uint32, _ *svc.ID, _ PIDType, _ *gosym.Table) {}
 
 func (pf *IdentityPidsFilter) BlockPID(_ uint32, _ uint32) {}
 
@@ -217,6 +234,10 @@ func (pf *IdentityPidsFilter) Filter(inputSpans []request.Span) []request.Span {
 		s.ServiceID = *svc
 	}
 	return inputSpans
+}
+
+func (pf *IdentityPidsFilter) GetSymTab(_ uint32) *gosym.Table {
+	return nil
 }
 
 func serviceInfo(pid uint32) *svc.ID {
