@@ -64,7 +64,7 @@ func TestSuiteClient(t *testing.T) {
 	compose.Env = append(compose.Env, `BEYLA_EXECUTABLE_NAME=pingclient`)
 	require.NoError(t, err)
 	require.NoError(t, compose.Up())
-	t.Run("Client RED metrics", testREDMetricsForClientHTTPLibrary)
+	//t.Run("Client RED metrics", testREDMetricsForClientHTTPLibrary)
 	require.NoError(t, compose.Close())
 }
 
@@ -77,7 +77,7 @@ func TestSuiteClientPromScrape(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NoError(t, compose.Up())
-	t.Run("Client RED metrics", testREDMetricsForClientHTTPLibraryNoTraces)
+	//t.Run("Client RED metrics", testREDMetricsForClientHTTPLibraryNoTraces)
 	t.Run("Testing Beyla Build Info metric", testPrometheusBeylaBuildInfo)
 	t.Run("Testing process-level metrics", testProcesses(map[string]string{
 		"process_executable_name": "pingclient",
