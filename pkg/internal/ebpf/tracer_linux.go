@@ -150,7 +150,7 @@ func (pt *ProcessTracer) loadAndAssign(p Tracer) error {
 		return err
 	}
 
-	collOpts.Programs = ebpf.ProgramOptions{LogSize: 640 * 1024}
+	collOpts.Programs = ebpf.ProgramOptions{LogSizeStart: 640 * 1024}
 
 	return spec.LoadAndAssign(p.BpfObjects(), collOpts)
 }

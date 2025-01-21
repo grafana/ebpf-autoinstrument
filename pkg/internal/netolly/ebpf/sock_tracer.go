@@ -78,7 +78,7 @@ func NewSockFlowFetcher(
 		return nil, fmt.Errorf("rewriting BPF constants definition: %w", err)
 	}
 	if err := spec.LoadAndAssign(&objects, &ebpf.CollectionOptions{
-		Programs: ebpf.ProgramOptions{LogSize: 640 * 1024},
+		Programs: ebpf.ProgramOptions{LogSizeStart: 640 * 1024},
 	}); err != nil {
 		printVerifierErrorInfo(err)
 		return nil, fmt.Errorf("loading and assigning BPF objects: %w", err)
