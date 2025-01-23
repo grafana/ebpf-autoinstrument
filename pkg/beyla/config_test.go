@@ -122,10 +122,11 @@ network:
 		Printer:          false,
 		TracePrinter:     "json",
 		EBPF: config.EBPFTracer{
-			BatchLength:        100,
-			BatchTimeout:       time.Second,
-			HTTPRequestTimeout: 30 * time.Second,
-			TCBackend:          tcmanager.TCBackendAuto,
+			BatchLength:               100,
+			BatchTimeout:              time.Second,
+			HTTPRequestTimeout:        30 * time.Second,
+			TCBackend:                 tcmanager.TCBackendAuto,
+			ContextPropagationEnabled: true,
 		},
 		Grafana: otel.GrafanaConfig{
 			OTLP: otel.GrafanaOTLP{
@@ -148,7 +149,7 @@ network:
 				instrumentations.InstrumentationALL,
 			},
 			HistogramAggregation: "base2_exponential_bucket_histogram",
-			TTL:                  defaultMetricsTTL,
+			TTL:                  5 * time.Minute,
 		},
 		Traces: otel.TracesConfig{
 			Protocol:           otel.ProtocolUnset,
@@ -217,7 +218,11 @@ network:
 		},
 		Discovery: services.DiscoveryConfig{
 			ExcludeOTelInstrumentedServices: true,
-			ExcludeSystemServices:           `.*alloy.*|.*otelcol.*|.*beyla.*`,
+			DefaultExcludeServices: services.DefinitionCriteria{
+				services.Attributes{
+					Path: services.NewPathRegexp(regexp.MustCompile("(?:^|/)(beyla$|alloy$|otelcol[^/]*$)")),
+				},
+			},
 		},
 	}, cfg)
 }
@@ -491,6 +496,27 @@ time=\S+ level=DEBUG msg=debug arg=debug$`),
 			assert.Equal(t, tc.expectedCfg, cfg)
 		})
 	}
+}
+
+func TestDefaultExclusionFilter(t *testing.T) {
+	c := DefaultConfig.Discovery.DefaultExcludeServices
+
+	assert.True(t, c[0].Path.MatchString("beyla"))
+	assert.True(t, c[0].Path.MatchString("alloy"))
+	assert.True(t, c[0].Path.MatchString("otelcol-contrib"))
+
+	assert.False(t, c[0].Path.MatchString("/usr/bin/beyla/test"))
+	assert.False(t, c[0].Path.MatchString("/usr/bin/alloy/test"))
+	assert.False(t, c[0].Path.MatchString("/usr/bin/otelcol-contrib/test"))
+
+	assert.True(t, c[0].Path.MatchString("/beyla"))
+	assert.True(t, c[0].Path.MatchString("/alloy"))
+	assert.True(t, c[0].Path.MatchString("/otelcol-contrib"))
+
+	assert.True(t, c[0].Path.MatchString("/usr/bin/beyla"))
+	assert.True(t, c[0].Path.MatchString("/usr/bin/alloy"))
+	assert.True(t, c[0].Path.MatchString("/usr/bin/otelcol-contrib"))
+	assert.True(t, c[0].Path.MatchString("/usr/bin/otelcol-contrib123"))
 }
 
 func loadConfig(t *testing.T, env envMap) *Config {

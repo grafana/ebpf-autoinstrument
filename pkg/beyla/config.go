@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"regexp"
 	"time"
 
 	"github.com/caarlos0/env/v9"
@@ -38,7 +39,7 @@ const (
 )
 
 const (
-	defaultMetricsTTL = 5 * time.Minute
+	defaultMetricsTTL = 70 * time.Minute
 )
 
 var DefaultConfig = Config{
@@ -46,10 +47,11 @@ var DefaultConfig = Config{
 	LogLevel:         "INFO",
 	EnforceSysCaps:   false,
 	EBPF: config.EBPFTracer{
-		BatchLength:        100,
-		BatchTimeout:       time.Second,
-		HTTPRequestTimeout: 30 * time.Second,
-		TCBackend:          tcmanager.TCBackendAuto,
+		BatchLength:               100,
+		BatchTimeout:              time.Second,
+		HTTPRequestTimeout:        30 * time.Second,
+		TCBackend:                 tcmanager.TCBackendAuto,
+		ContextPropagationEnabled: true,
 	},
 	Grafana: otel.GrafanaConfig{
 		OTLP: otel.GrafanaOTLP{
@@ -74,8 +76,6 @@ var DefaultConfig = Config{
 		Instrumentations: []string{
 			instrumentations.InstrumentationALL,
 		},
-		// TODO: keep OTEL expiration disabled by default until we address
-		// this issue: https://github.com/grafana/beyla/issues/1065
 		TTL: defaultMetricsTTL,
 	},
 	Traces: otel.TracesConfig{
@@ -132,7 +132,11 @@ var DefaultConfig = Config{
 	},
 	Discovery: services.DiscoveryConfig{
 		ExcludeOTelInstrumentedServices: true,
-		ExcludeSystemServices:           `.*alloy.*|.*otelcol.*|.*beyla.*`,
+		DefaultExcludeServices: services.DefinitionCriteria{
+			services.Attributes{
+				Path: services.NewPathRegexp(regexp.MustCompile("(?:^|/)(beyla$|alloy$|otelcol[^/]*$)")),
+			},
+		},
 	},
 }
 
