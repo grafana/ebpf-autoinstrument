@@ -22,15 +22,9 @@ const timeout = 5 * time.Second
 
 func TestDecoration(t *testing.T) {
 	inf := &fakeInformer{}
-	store := kube.NewStore(inf, kube.MetadataSources{
-		Annotations: kube.AnnotationSources{
-			ServiceName:      []string{"resource.opentelemetry.io/service.name"},
-			ServiceNamespace: []string{"resource.opentelemetry.io/service.namespace"},
-		},
-		Labels: kube.LabelSources{
-			ServiceName:      []string{"app.kubernetes.io/name"},
-			ServiceNamespace: []string{"app.kubernetes.io/part-of"},
-		},
+	store := kube.NewStore(inf, kube.ResourceLabels{
+		"service.name":      []string{"app.kubernetes.io/name"},
+		"service.namespace": []string{"app.kubernetes.io/part-of"},
 	})
 	// pre-populated kubernetes metadata database
 	inf.Notify(&informer.Event{Type: informer.EventType_CREATED, Resource: &informer.ObjectMeta{
@@ -212,6 +206,8 @@ func TestDecoration(t *testing.T) {
 			"k8s.pod.uid":        "uid-78",
 			"k8s.pod.start_time": "2020-01-02 12:56:56",
 			"k8s.cluster.name":   "the-cluster",
+			"service.name":       "a-cool-name",
+			"service.namespace":  "a-cool-namespace",
 		}, deco[0].Service.Metadata)
 	})
 	t.Run("user can override service name and ns via annotations", func(t *testing.T) {
@@ -231,6 +227,8 @@ func TestDecoration(t *testing.T) {
 			"k8s.pod.uid":        "uid-33",
 			"k8s.pod.start_time": "2020-01-02 12:56:56",
 			"k8s.cluster.name":   "the-cluster",
+			"service.name":       "otel-override-name",
+			"service.namespace":  "otel-override-ns",
 		}, deco[0].Service.Metadata)
 	})
 	t.Run("user can override service name and ns via env vars, taking precedence over any other criteria", func(t *testing.T) {
@@ -250,6 +248,8 @@ func TestDecoration(t *testing.T) {
 			"k8s.pod.uid":        "uid-66",
 			"k8s.pod.start_time": "2020-01-02 12:56:56",
 			"k8s.cluster.name":   "the-cluster",
+			"service.name":       "env-svc-name",
+			"service.namespace":  "env-svc-ns",
 		}, deco[0].Service.Metadata)
 	})
 	t.Run("process without pod Info won't be decorated", func(t *testing.T) {

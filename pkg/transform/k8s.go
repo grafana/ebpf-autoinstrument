@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"time"
 
 	"github.com/mariomac/pipes/pipe"
@@ -12,7 +13,6 @@ import (
 	"github.com/grafana/beyla/pkg/internal/kube"
 	"github.com/grafana/beyla/pkg/internal/pipe/global"
 	"github.com/grafana/beyla/pkg/internal/request"
-	"github.com/grafana/beyla/pkg/kubecache/informer"
 	"github.com/grafana/beyla/pkg/kubeflags"
 )
 
@@ -53,9 +53,13 @@ type KubernetesDecorator struct {
 	// node as the Beyla instance. It will also restrict the Node information to the local node.
 	MetaRestrictLocalNode bool `yaml:"meta_restrict_local_node" env:"BEYLA_KUBE_META_RESTRICT_LOCAL_NODE"`
 
-	// MetadataSources allows Beyla overriding the service name and namespace of an application from
+	// MetaSourceLabels allows Beyla overriding the service name and namespace of an application from
 	// the given labels.
-	MetadataSources kube.MetadataSources `yaml:"meta_naming_sources"`
+	// Deprecated: kept for backwards-compatibility with Beyla 1.9
+	MetaSourceLabels kube.MetaSourceLabels `yaml:"meta_source_labels"`
+
+	// ResourceLabels allows Beyla overriding the OTEL Resource attributes from a map of user-defined labels.
+	ResourceLabels kube.ResourceLabels `yaml:"resource_labels"`
 }
 
 const (
@@ -115,14 +119,14 @@ func (md *metadataDecorator) do(span *request.Span) {
 	}
 }
 
-func (md *metadataDecorator) appendMetadata(span *request.Span, meta *informer.ObjectMeta, containerName string) {
-	if meta.Pod == nil {
+func (md *metadataDecorator) appendMetadata(span *request.Span, meta *kube.CachedObjMeta, containerName string) {
+	if meta.Meta.Pod == nil {
 		// if this message happen, there is a bug
 		klog().Debug("pod metadata for is nil. Ignoring decoration", "meta", meta)
 		return
 	}
-	topOwner := kube.TopOwner(meta.Pod)
-	name, namespace := md.db.ServiceNameNamespaceForMetadata(meta)
+	topOwner := kube.TopOwner(meta.Meta.Pod)
+	name, namespace := md.db.ServiceNameNamespaceForMetadata(meta.Meta)
 	// If the user has not defined criteria values for the reported
 	// service name and namespace, we will automatically set it from
 	// the kubernetes metadata
@@ -138,17 +142,17 @@ func (md *metadataDecorator) appendMetadata(span *request.Span, meta *informer.O
 	// (related issue: https://github.com/grafana/beyla/issues/1124)
 	// Service Instance ID is set according to OTEL collector conventions:
 	// (related issue: https://github.com/grafana/k8s-monitoring-helm/issues/942)
-	span.Service.UID.Instance = meta.Namespace + "." + meta.Name + "." + containerName
+	span.Service.UID.Instance = meta.Meta.Namespace + "." + meta.Meta.Name + "." + containerName
 
 	// if, in the future, other pipeline steps modify the service metadata, we should
 	// replace the map literal by individual entry insertions
 	span.Service.Metadata = map[attr.Name]string{
-		attr.K8sNamespaceName: meta.Namespace,
-		attr.K8sPodName:       meta.Name,
+		attr.K8sNamespaceName: meta.Meta.Namespace,
+		attr.K8sPodName:       meta.Meta.Name,
 		attr.K8sContainerName: containerName,
-		attr.K8sNodeName:      meta.Pod.NodeName,
-		attr.K8sPodUID:        meta.Pod.Uid,
-		attr.K8sPodStartTime:  meta.Pod.StartTimeStr,
+		attr.K8sNodeName:      meta.Meta.Pod.NodeName,
+		attr.K8sPodUID:        meta.Meta.Pod.Uid,
+		attr.K8sPodStartTime:  meta.Meta.Pod.StartTimeStr,
 		attr.K8sClusterName:   md.clusterName,
 	}
 
@@ -158,14 +162,17 @@ func (md *metadataDecorator) appendMetadata(span *request.Span, meta *informer.O
 		span.Service.Metadata[attr.K8sOwnerName] = topOwner.Name
 	}
 
-	for _, owner := range meta.Pod.Owners {
+	for _, owner := range meta.Meta.Pod.Owners {
 		if kindLabel := OwnerLabelName(owner.Kind); kindLabel != "" {
 			span.Service.Metadata[kindLabel] = owner.Name
 		}
 	}
 
+	// append resource metadata from cached object
+	maps.Copy(span.Service.Metadata, meta.OTELResourceMeta)
+
 	// override hostname by the Pod name
-	span.Service.HostName = meta.Name
+	span.Service.HostName = meta.Meta.Name
 }
 
 func OwnerLabelName(kind string) attr.Name {

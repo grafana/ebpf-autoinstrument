@@ -118,6 +118,7 @@ func FeatureHTTPMetricsDecoration(manifest string, overrideAttrs map[string]stri
 		"source":                   "beyla",
 		"host_name":                "testserver",
 		"host_id":                  HostIDRegex,
+		"deployment_environment":   "integration-test",
 	}
 	// if service_instance_id is overridden to be empty, we will check that value for target_info{instance} instead
 	if overrideAttrs != nil {
@@ -127,7 +128,8 @@ func FeatureHTTPMetricsDecoration(manifest string, overrideAttrs map[string]stri
 	}
 	overriddenNameNS := attributeMap(allAttributes, overrideAttrs, "server", "server_service_namespace")
 	expectedServer := overriddenNameNS["server"]
-	expectedJob := overriddenNameNS["server_service_namespace"] + "/" + expectedServer
+	expectedNs := overriddenNameNS["server_service_namespace"]
+	expectedJob := expectedNs + "/" + expectedServer
 
 	return features.New("Decoration of Pod-to-Service communications").
 		Setup(pinger.Deploy()).
@@ -154,7 +156,7 @@ func FeatureHTTPMetricsDecoration(manifest string, overrideAttrs map[string]stri
 					"k8s_cluster_name",
 				))).
 		Assess("all the span graph metrics exist",
-			testMetricsDecoration(spanGraphMetrics, `{server="`+expectedServer+`",client="internal-pinger"}`,
+			testMetricsDecoration(spanGraphMetrics, `{server="`+expectedServer+`",server_service_namespace="`+expectedNs+`",client="internal-pinger"}`,
 				attributeMap(allAttributes, overrideAttrs,
 					"server_service_namespace",
 					"source",
@@ -196,15 +198,16 @@ func FeatureGRPCMetricsDecoration(manifest string, overrideAttrs map[string]stri
 	}
 
 	allAttributes := map[string]string{
-		"k8s_namespace_name":  "^default$",
-		"k8s_node_name":       ".+-control-plane$",
-		"k8s_pod_uid":         UUIDRegex,
-		"k8s_pod_start_time":  TimeRegex,
-		"k8s_cluster_name":    "^beyla$",
-		"k8s_owner_name":      "^testserver$",
-		"k8s_deployment_name": "^testserver$",
-		"k8s_replicaset_name": "^testserver-",
-		"service_instance_id": "^default\\.testserver-.+\\.testserver",
+		"k8s_namespace_name":     "^default$",
+		"k8s_node_name":          ".+-control-plane$",
+		"k8s_pod_uid":            UUIDRegex,
+		"k8s_pod_start_time":     TimeRegex,
+		"k8s_cluster_name":       "^beyla$",
+		"k8s_owner_name":         "^testserver$",
+		"k8s_deployment_name":    "^testserver$",
+		"k8s_replicaset_name":    "^testserver-",
+		"service_instance_id":    "^default\\.testserver-.+\\.testserver",
+		"deployment_environment": "integration-test",
 	}
 	// if service_instance_id is overridden to be empty, we will check that value for target_info{instance} instead
 	targetInfoInstance := ""
