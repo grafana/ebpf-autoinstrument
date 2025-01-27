@@ -16,6 +16,8 @@
 // A map of sockets which we track with sock_ops. The sock_msg
 // program subscribes to this map and runs for each new socket
 // activity
+// The map size must be max u16 to avoid accidentally losing
+// the socket information
 struct {
     __uint(type, BPF_MAP_TYPE_SOCKHASH);
     __uint(max_entries, SOCKOPS_MAP_SIZE);
@@ -34,11 +36,13 @@ typedef struct tc_http_ctx {
 
 // A map that keeps all the HTTP packets we've extended with
 // the sock_msg program and that Traffic Control needs to write to.
+// The map size must be max u16 to avoid accidentally overwriting
+// prior information of a live extended header.
 struct tc_http_ctx_map {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
     __type(key, u32);
     __type(value, struct tc_http_ctx);
-    __uint(max_entries, 10240);
+    __uint(max_entries, SOCKOPS_MAP_SIZE);
 } tc_http_ctx_map SEC(".maps");
 
 // Memory buffer and a map bellow as temporary storage for
@@ -201,15 +205,18 @@ static __always_inline u8 protocol_detector(struct sk_msg_md *msg,
             msg_buffer_t msg_buf = {
                 .pos = 0,
             };
-            bpf_probe_read_kernel(msg_buf.buf, FULL_BUF_SIZE, msg->data);
+            bpf_probe_read_kernel(msg_buf.buf, MAX_PROTOCOL_BUF_SIZE, msg->data);
             // We setup any call that looks like HTTP request to be extended.
             // This must match exactly to what the decision will be for
             // the kprobe program on tcp_sendmsg, which sets up the
             // outgoing_trace_map data used by Traffic Control to write the
             // actual 'Traceparent:...' string.
+            if (bpf_map_update_elem(&msg_buffers, &e_key, &msg_buf, BPF_ANY)) {
+                // fail if we can't setup a msg buffer
+                return 0;
+            }
             if (is_http_request_buf((const unsigned char *)msg_buf.buf)) {
                 bpf_dbg_printk("Setting up request to be extended");
-                bpf_map_update_elem(&msg_buffers, &e_key, &msg_buf, BPF_ANY);
 
                 return 1;
             }
@@ -251,6 +258,8 @@ int beyla_packet_extender(struct sk_msg_md *msg) {
     }
     bpf_msg_pull_data(msg, 0, 1024, 0);
 
+    // TODO: execute the protocol handlers here with tail calls, don't
+    // rely on tcp_sendmsg to do it and record these message buffers.
     if (!tracked) {
         // If we didn't have metadata (sock_msg runs before the kprobe),
         // we ensure to mark it for any packet we want to extend.
@@ -266,19 +275,37 @@ int beyla_packet_extender(struct sk_msg_md *msg) {
 
         if (newline_pos >= 0) {
             newline_pos++;
-            // Push extends the packet with empty space and sets up the
-            // metadata for Traffic Control to finish the writing
-            if (!bpf_msg_push_data(msg, newline_pos, EXTEND_SIZE, 0)) {
-                tc_http_ctx_t ctx = {
-                    .offset = newline_pos,
-                    .seen = 0,
-                    .written = 0,
-                };
-                u32 port = msg->local_port;
+            tc_http_ctx_t ctx = {
+                .offset = newline_pos,
+                .seen = 0,
+                .written = 0,
+            };
+            u32 port = msg->local_port;
 
-                bpf_map_update_elem(&tc_http_ctx_map, &port, &ctx, BPF_ANY);
+            // We first attempt to register the metadata for TC to work with. If we
+            // fail, we shouldn't expand the packet!
+            long failed = bpf_map_update_elem(&tc_http_ctx_map, &port, &ctx, BPF_ANY);
+
+            if (!failed) {
+                // Push extends the packet with empty space and sets up the
+                // metadata for Traffic Control to finish the writing. If we
+                // fail (non-zero return value), we delete the metadata.
+                if (bpf_msg_push_data(msg, newline_pos, EXTEND_SIZE, 0)) {
+                    // We two things to disable this context, we set the written
+                    // and seen to their max value to disable the TC code, and then
+                    // we also attempt delete. This is to ensure that we still have
+                    // disabled the TC code if delete failed.
+                    if (bpf_map_delete_elem(&tc_http_ctx_map, &port)) {
+                        tc_http_ctx_t *bad_ctx = bpf_map_lookup_elem(&tc_http_ctx_map, &port);
+                        if (bad_ctx) {
+                            bad_ctx->written = EXTEND_SIZE;
+                            bad_ctx->seen = bad_ctx->offset;
+                        }
+                    }
+                } else {
+                    bpf_dbg_printk("offset to split %d", newline_pos);
+                }
             }
-            bpf_dbg_printk("offset to split %d", newline_pos);
         }
     }
 
