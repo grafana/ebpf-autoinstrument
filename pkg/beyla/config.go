@@ -242,7 +242,7 @@ func (c *Config) Validate() error {
 		return ConfigError(fmt.Sprintf("error in exclude_services YAML property: %s", err.Error()))
 	}
 	if !c.Enabled(FeatureNetO11y) && !c.Enabled(FeatureAppO11y) {
-		return ConfigError("missing at least one of BEYLA_NETWORK_METRICS, BEYLA_EXECUTABLE_NAME or BEYLA_OPEN_PORT property")
+		return ConfigError("missing to enable application discovery or network metrics. Check documentation")
 	}
 	if (c.Port.Len() > 0 || c.Exec.IsSet() || len(c.Discovery.Services) > 0) && c.Discovery.SystemWide {
 		return ConfigError("you can't use BEYLA_SYSTEM_WIDE if any of BEYLA_EXECUTABLE_NAME, BEYLA_OPEN_PORT or services (YAML) are set")
@@ -253,8 +253,10 @@ func (c *Config) Validate() error {
 	if !c.EBPF.TCBackend.Valid() {
 		return ConfigError("Invalid BEYLA_BPF_TC_BACKEND value")
 	}
-	if err := tcmanager.EnsureCiliumCompatibility(c.EBPF.TCBackend); err != nil {
-		return ConfigError(fmt.Sprintf("Cilium compatibility error: %s", err.Error()))
+	if c.willUseTC() {
+		if err := tcmanager.EnsureCiliumCompatibility(c.EBPF.TCBackend); err != nil {
+			return ConfigError(fmt.Sprintf("Cilium compatibility error: %s", err.Error()))
+		}
 	}
 
 	if c.Attributes.Kubernetes.InformersSyncTimeout == 0 {
@@ -301,6 +303,10 @@ func (c *Config) promNetO11yEnabled() bool {
 
 func (c *Config) otelNetO11yEnabled() bool {
 	return (c.Metrics.Enabled() || c.Grafana.OTLP.MetricsEnabled()) && c.Metrics.NetworkMetricsEnabled()
+}
+
+func (c *Config) willUseTC() bool {
+	return c.EBPF.ContextPropagationEnabled || (c.Enabled(FeatureNetO11y) && c.NetworkFlows.Source == EbpfSourceTC)
 }
 
 // Enabled checks if a given Beyla feature is enabled according to the global configuration
